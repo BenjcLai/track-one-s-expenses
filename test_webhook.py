@@ -158,20 +158,44 @@ def parse_multiline_expenses(text: str, now_tw: datetime) -> tuple[str, list[dic
     return expense_date, records, unparsed
 
 
-def append_expenses(records: list[dict[str, Any]], raw_text: str) -> None:
+def append_expenses(
+    records: list[dict[str, Any]],
+    raw_text: str,
+    replace_date: str | None = None,
+) -> None:
     ensure_csv_exists()
     logged_at = datetime.now(TZ_TW).strftime("%Y-%m-%d %H:%M:%S")
-    with open(CSV_FILE, mode="a", newline="", encoding="utf-8-sig") as f:
+
+    kept_rows: list[list[str]] = []
+    header = ["消費日期", "品項", "金額", "分類", "原始訊息", "記帳時間"]
+
+    with open(CSV_FILE, mode="r", newline="", encoding="utf-8-sig") as f:
+        reader = csv.reader(f)
+        rows = list(reader)
+        if rows:
+            header = rows[0]
+            for row in rows[1:]:
+                if not row:
+                    continue
+                row_date = row[0].strip() if len(row) > 0 else ""
+                if replace_date and row_date == replace_date:
+                    continue
+                kept_rows.append(row)
+
+    for r in records:
+        kept_rows.append([
+            r["date"],
+            r["item"],
+            str(r["amount"]),
+            r["category"],
+            raw_text,
+            logged_at,
+        ])
+
+    with open(CSV_FILE, mode="w", newline="", encoding="utf-8-sig") as f:
         writer = csv.writer(f)
-        for r in records:
-            writer.writerow([
-                r["date"],
-                r["item"],
-                r["amount"],
-                r["category"],
-                raw_text,
-                logged_at,
-            ])
+        writer.writerow(header)
+        writer.writerows(kept_rows)
 
 
 def build_summary(period: str) -> str:
@@ -243,7 +267,7 @@ def handle_event(event: dict[str, Any]) -> None:
     expense_date, records, unparsed = parse_multiline_expenses(user_text, now_tw)
 
     if records:
-        append_expenses(records, user_text)
+        append_expenses(records, user_text, replace_date=expense_date)
         lines_out = [f"已記帳（{expense_date}）✅"]
         subtotal = 0.0
         for r in records:
