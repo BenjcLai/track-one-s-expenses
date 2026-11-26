@@ -3,4 +3,5 @@ uvicorn
 pymssql
 python-multipart
 openai
+requests
 
